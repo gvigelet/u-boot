@@ -1,0 +1,31 @@
+# Copyright (C) 2015 Peloton Technology, Inc. - All Rights Reserved
+# Author: Philipp Schrader (philipp@peloton-tech.com)
+#
+# This file is intended to be used to build das U-Boot for the TDA2.
+# Use as follows:
+#
+#	make -f scripts/Makefile.tda2 uboot
+#	make -f scripts/Makefile.tda2 clean
+#
+# etc...
+#
+# Make sure to download the Linaro GCC toolchain before running any of these
+# commands.
+#
+#	./linaro_gcc/download_gcc.sh
+
+TOOLCHAIN_DIR = $(PWD)/linaro_gcc/gcc-linaro-4.9-2015.05-x86_64_arm-linux-gnueabihf/bin
+UBOOT_BUILD_VARS = CROSS_COMPILE=$(TOOLCHAIN_DIR)/arm-linux-gnueabihf- -j4
+
+.PHONY: default defconfig uboot clean
+
+default: uboot
+
+defconfig:
+	$(MAKE) $(UBOOT_BUILD_VARS) dra7xx_evm_config
+
+uboot: defconfig
+	$(MAKE) $(UBOOT_BUILD_VARS)
+
+clean:
+	$(MAKE) $(UBOOT_BUILD_VARS) distclean
