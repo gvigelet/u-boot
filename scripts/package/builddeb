@@ -1,0 +1,212 @@
+#!/bin/bash
+#
+# Copyright (C) 2015 Peloton Technology, Inc. - All Rights Reserved
+# Author: Philipp Schrader (philipp@peloton-tech.com)
+#
+# This script is intended to package up U-Boot so it can be installed via dpkg.
+#
+# This script is inspired by the corresponding script in the repository for the
+# Linux kernel. You can find it under the "scripts/package/builddeb" name. Very
+# little code from the kernel's script survived the process of creating this
+# script.
+
+set -e
+set -u
+
+readonly BASE_PACKAGE_NAME="u-boot"
+
+FLAGS_full_name="$(whoami)"
+FLAGS_email="$(whoami)@$(hostname --fqdn)"
+FLAGS_platform=""
+
+err() {
+  echo "++ ERROR: $@" >&2
+}
+
+info() {
+  echo "-- $@"
+}
+
+check_return_code() {
+  local label="$1"
+  local return_code="$2"
+
+  if ((return_code != 0)); then
+    err "$label exited with error code $return_code"
+    exit $return_code
+  fi
+}
+
+usage() {
+  local name="$(basename "${BASH_SOURCE[0]}")"
+
+  cat <<EOT
+Usage: $name <options> PKGNAME
+
+Options:
+  --help                Print this help message.
+  --full-name           Name of who's packaging this.
+  --email               E-mail of who's packaging this.
+
+Mandatory arguments:
+  PLATFORM              Which platform this will run on (e.g "tda2-evm")
+
+For example, if you want to package u-boot in a package called
+"u-boot-tda2-evm" then invoke the script like so:
+
+  $name tda2-evm
+EOT
+}
+
+process_command_line() {
+  while (($# > 0)); do
+    # When adding new command line arguments, make sure to `shift' those args.
+    # That lets us parse the positional arguments more easily.
+    case "$1" in
+      --help | -h)
+        usage
+        exit 0
+        ;;
+      --full-name | -f)
+        shift
+        FLAGS_full_name="$1"
+        shift
+        ;;
+      --email | -e)
+        shift
+        FLAGS_email="$1"
+        shift
+        ;;
+      *)
+        break
+        ;;
+    esac
+  done
+
+  if (($# < 1)); then
+    err "Need at least one positional arguments"
+    usage
+    exit 1
+  fi
+
+  FLAGS_platform="$1"
+
+  readonly FLAGS_platform
+}
+
+cleanup_old_files() {
+  local build_dir="$1"
+
+  # Remove everything inside the build directory.
+  rm -rf "$build_dir"/*
+  check_return_code "rm -rf $build_dir/*" "$?"
+}
+
+generate_package_files() {
+  local debian_dir="$1"
+  local platform="$2"
+  local package_version="$3"
+  local packager="$4"
+  local architecture="$5"
+  local git_rev="$6"
+
+  local package_name="$BASE_PACKAGE_NAME-$platform"
+
+  # Remove the 'v' from the version number if it starts with that.
+  package_version="${package_version#v}"
+
+  # Generate the changelog.
+  cat > "$debian_dir"/changelog <<EOT
+u-boot-upstream ($package_version) UNRELEASED; urgency=low
+
+  * Custom built U-Boot.
+
+ -- $packager  $(date -R)
+EOT
+
+  # Generate magic number for debhelper.
+  echo 9 > "$debian_dir"/compat
+
+  # Generate the control file.
+  cat > "$debian_dir"/control <<EOT
+Source: u-boot-upstream
+Section: embedded
+Priority: optional
+Maintainer: $packager
+Standards-Version: 3.9.2
+Homepage: www.denx.de/wiki/U-Boot
+
+Package: $package_name
+XBS-Git-Commit: $git_rev
+Architecture: $architecture
+Description: A boot loader for $platform systems
+ Das U-Boot is a cross-platform bootloader for embedded systems, used as the
+ default boot loader by several board vendors. It is intended to be easy to
+ port and to debug, and runs on many supported architectures, including PPC,
+ ARM, MIPS, x86, m68k, NIOS, and Microblaze.
+ .
+ This package includes boot loaders for $platform platforms.
+EOT
+
+  # Create an empty copyright file for now.
+  echo > "$debian_dir"/copyright
+
+  # Create an install-file
+  cat > "$debian_dir"/install <<EOT
+MLO boot/uboot/
+u-boot.img boot/uboot/
+EOT
+}
+
+prepare_dpkg_build_dir() {
+  local build_dir="$1"
+  local platform="$2"
+
+  local package_name="$BASE_PACKAGE_NAME-$platform"
+
+  # Put all the files in place for the DEB package.
+  mkdir -p "$build_dir"/DEBIAN/
+  install -m 644 -D MLO "$build_dir"/boot/uboot/MLO
+  install -m 644 -D u-boot.img "$build_dir"/boot/uboot/u-boot.img
+
+  # Fix ownership and permissions
+  chown -R root:root "$build_dir"
+  chmod -R go-w "$build_dir"
+
+  # Generate the binary control files.
+  dpkg-gencontrol \
+      -DArchitecture=armhf \
+      -Vdebarch=armhf \
+      -p"$package_name" \
+      -P"$build_dir"
+}
+
+main() {
+  process_command_line "$@"
+
+  local package_version
+  local git_revision
+  local tmp_dir="${BASH_SOURCE[0]%/*/*/*}"/debian/
+
+  cleanup_old_files "$tmp_dir"
+
+  package_version="$(git describe)"
+  check_return_code "git describe" "$?"
+
+  git_revision="$(git rev-parse HEAD)"
+  check_return_code "git rev-parse HEAD" "$?"
+
+  generate_package_files \
+      "$tmp_dir" \
+      "$FLAGS_platform" \
+      "$package_version" \
+      "$FLAGS_full_name <$FLAGS_email>" \
+      armhf \
+      "$git_revision"
+
+  prepare_dpkg_build_dir "$tmp_dir"/tmp "$FLAGS_platform"
+
+  dpkg --build "$tmp_dir"/tmp ..
+}
+
+main "$@"

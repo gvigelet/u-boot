@@ -6,6 +6,7 @@
 #
 #	make -f scripts/Makefile.tda2 uboot
 #	make -f scripts/Makefile.tda2 clean
+#	make -f scripts/Makefile.tda2 deb-pkg
 #
 # etc...
 #
@@ -29,3 +30,10 @@ uboot: defconfig
 
 clean:
 	$(MAKE) $(UBOOT_BUILD_VARS) distclean
+
+deb-pkg:
+	CC=$(TOOLCHAIN_DIR)/arm-linux-gnueabihf-gcc \
+		fakeroot -u $(PWD)/scripts/package/builddeb \
+			--full-name "Peloton Technology" \
+			--email "uboot@peloton-tech.com" \
+			tda2-evm
