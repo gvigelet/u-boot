@@ -301,9 +301,8 @@ int spi_xfer(struct spi_slave *slave, unsigned int bitlen, const void *dout,
  * completion of read/write/erase. Once its root
  * caused, it will be remove from the driver.
  */
-#ifdef CONFIG_AM43XX
 	udelay(100);
-#endif
+
 	while (words--) {
 		if (txp) {
 			debug("tx cmd %08x dc %08x data %02x\n",
