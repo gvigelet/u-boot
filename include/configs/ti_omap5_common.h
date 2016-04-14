@@ -142,6 +142,10 @@
 	DFU_ALT_INFO_RAM \
 	DFU_ALT_INFO_QSPI
 
+#ifndef CONFIG_EXTRA_BOARD_ENV_SETTINGS
+#define CONFIG_EXTRA_BOARD_ENV_SETTINGS
+#endif
+
 #ifndef CONFIG_SPL_BUILD
 #define CONFIG_ENV_VARS_UBOOT_RUNTIME_CONFIG
 #define CONFIG_EXTRA_ENV_SETTINGS \
@@ -195,6 +199,7 @@
 	"loadfdt=load mmc ${bootpart} ${fdtaddr} ${bootdir}/${fdtfile};\0" \
 	DFUARGS \
 	NETARGS \
+	CONFIG_EXTRA_BOARD_ENV_SETTINGS \
 
 
 #define CONFIG_BOOTCOMMAND \
