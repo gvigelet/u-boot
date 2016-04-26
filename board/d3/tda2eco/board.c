@@ -34,12 +34,9 @@
 #include <cpsw.h>
 #endif
 
-#define GPIO_BOARD_ID0   (244)
-#define GPIO_BOARD_ID1   (245)
-#define GPIO_BOARD_ID2   (246)
-#define BOARD_ID0_OFFSET (0)
-#define BOARD_ID1_OFFSET (1)
-#define BOARD_ID2_OFFSET (2)
+#define BOARD_ID_ADDR	0x74
+#define BOARD_ID_REG_P0	0x00
+#define BOARD_ID_MASK	0x07
 
 enum board_id {
 };
@@ -118,7 +115,17 @@ const struct omap_sysinfo sysinfo = {
 
 static int read_board_id(void)
 {
-	return -1;
+	unsigned char val;
+	int board_id = -1;
+
+	if (!i2c_read(BOARD_ID_ADDR, BOARD_ID_REG_P0, 1, &val, sizeof(val))) {
+		switch (val & BOARD_ID_MASK) {
+		default:
+			break;
+		}
+	}
+
+	return board_id;
 }
 
 static const struct dmm_lisa_map_regs tda2eco_lisa_regs = {
