@@ -39,6 +39,7 @@
 #define BOARD_ID_MASK	0x07
 
 enum board_id {
+	BOARD_TDA2ECO_TDA2 = 0x04,
 };
 
 DECLARE_GLOBAL_DATA_PTR;
@@ -120,6 +121,9 @@ static int read_board_id(void)
 
 	if (!i2c_read(BOARD_ID_ADDR, BOARD_ID_REG_P0, 1, &val, sizeof(val))) {
 		switch (val & BOARD_ID_MASK) {
+		case BOARD_TDA2ECO_TDA2:
+			board_id = val;
+			break;
 		default:
 			break;
 		}
@@ -219,6 +223,9 @@ int board_late_init(void)
 
 	board_id = read_board_id();
 	switch(board_id) {
+	case BOARD_TDA2ECO_TDA2:
+		setenv("board_name", "tda2eco_tda2x");
+		break;
 	case -1:
 		printf("Unabled to read Board-ID\n");
 		setenv("board_name", "unknown_board");
