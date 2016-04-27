@@ -56,10 +56,11 @@
 #define CONFIG_EFI_PARTITION
 
 
-#ifndef CONFIG_SPL_BUILD
-#if 0
-Ethernet is not yet supported
+/* This must be defined to enable GMAC PLL configuration in clock.c (Linux is not able to do this for itself) */
+#define CONFIG_DRIVER_TI_CPSW		/* Driver for IP block */
 
+#ifndef CONFIG_SPL_BUILD
+#if 0 /* Ethernet is not supported in u-boot */
 /* CPSW Ethernet */
 
 #define CONFIG_CMD_DHCP

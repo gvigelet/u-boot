@@ -339,7 +339,7 @@ int usb_gadget_handle_interrupts(int index)
 }
 #endif
 
-#ifdef CONFIG_DRIVER_TI_CPSW
+#ifdef CONFIG_MII
 
 /* Delay value to add to calibrated value */
 #define RGMII0_TXCTL_DLY_VAL		((0x3 << 5) + 0x8)
