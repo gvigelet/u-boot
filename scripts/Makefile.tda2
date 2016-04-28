@@ -25,15 +25,25 @@ default: uboot
 defconfig:
 	$(MAKE) $(UBOOT_BUILD_VARS) dra7xx_evm_config
 
-uboot: defconfig
+d3-defconfig:
+	$(MAKE) $(UBOOT_BUILD_VARS) d3_tda2eco_defconfig
+
+uboot:
 	$(MAKE) $(UBOOT_BUILD_VARS)
 
 clean:
 	$(MAKE) $(UBOOT_BUILD_VARS) distclean
 
-deb-pkg:
+deb-pkg: defconfig
 	CC=$(TOOLCHAIN_DIR)/arm-linux-gnueabihf-gcc \
 		fakeroot -u $(PWD)/scripts/package/builddeb \
 			--full-name "Peloton Technology" \
 			--email "uboot@peloton-tech.com" \
 			tda2-evm
+
+d3-deb-pkg: d3-defconfig uboot
+	CC=$(TOOLCHAIN_DIR)/arm-linux-gnueabihf-gcc \
+		fakeroot -u $(PWD)/scripts/package/builddeb \
+			--full-name "Peloton Technology" \
+			--email "uboot@peloton-tech.com" \
+			d3-tda2eco
