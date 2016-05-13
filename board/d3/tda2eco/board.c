@@ -247,6 +247,7 @@ void recalibrate_iodelay(void)
 	int pconf_sz, iod_sz;
 	int ret;
 		
+	printf("recalibrating io delay\n");
 	/* D3 TDA2Eco */
 
 	pconf = core_padconf_array_essential_d3_tda2eco;
@@ -411,7 +412,8 @@ int usb_gadget_handle_interrupts(int index)
 }
 #endif
 
-#ifdef CONFIG_MII
+/* #ifdef CONFIG_MII */
+#ifdef CONFIG_DRIVER_TI_CPSW
 
 /* Delay value to add to calibrated value */
 #define RGMII0_TXCTL_DLY_VAL		((0x3 << 5) + 0x8)
@@ -485,21 +487,13 @@ static void u64_to_mac(u64 addr, u8 mac[6])
 }
 
 static void __maybe_unused board_ti_get_eth_mac_addr(int index,
-					      u8 mac_addr[TI_EEPROM_HDR_ETH_ALEN])
+					      u8 mac_addr[6])
 {
-	struct ti_common_eeprom *ep = TI_EEPROM_DATA;
+	/* need to read this from an eeprom */
+	u8 mac[]={0x6A,0x9A,0x86,0xC6,0x52,0x96};
 
-	if (ep->header == TI_DEAD_EEPROM_MAGIC)
-		goto fail;
-
-	if (index < 0 || index >= TI_EEPROM_HDR_NO_OF_MAC_ADDR)
-		goto fail;
-
-	memcpy(mac_addr, ep->mac_addr[index], TI_EEPROM_HDR_ETH_ALEN);
+	memcpy(mac_addr, mac, 6);
 	return;
-
-fail:
-	memset(mac_addr, 0, TI_EEPROM_HDR_ETH_ALEN);
 }
 
 
@@ -509,6 +503,10 @@ int board_eth_init(bd_t *bis)
 	uint8_t mac_addr[6];
 	uint32_t mac_hi, mac_lo;
 	uint32_t ctrl_val;
+	int i;
+        u64 mac1, mac2;
+        u8 mac_addr1[6], mac_addr2[6];
+	int num_macs;
 
 	/* try reading mac address from efuse */
 	mac_lo = readl((*ctrl)->control_core_mac_id_0_lo);
@@ -519,6 +517,9 @@ int board_eth_init(bd_t *bis)
 	mac_addr[3] = (mac_lo & 0xFF0000) >> 16;
 	mac_addr[4] = (mac_lo & 0xFF00) >> 8;
 	mac_addr[5] = mac_lo & 0xFF;
+
+	printf("MAC Address : %02x:%02x:%02x:%02x:%02x:%02x\n", mac_addr[0],
+		mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
 
 	if (!getenv("ethaddr")) {
 		printf("<ethaddr> not set. Validating first E-fuse MAC\n");
@@ -535,6 +536,11 @@ int board_eth_init(bd_t *bis)
 	mac_addr[3] = (mac_lo & 0xFF0000) >> 16;
 	mac_addr[4] = (mac_lo & 0xFF00) >> 8;
 	mac_addr[5] = mac_lo & 0xFF;
+
+
+        printf("MAC Address : %02x:%02x:%02x:%02x:%02x:%02x\n", mac_addr[0],
+                mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+
 
 	if (!getenv("eth1addr")) {
 		if (is_valid_ethaddr(mac_addr))

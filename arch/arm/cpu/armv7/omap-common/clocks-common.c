@@ -513,6 +513,7 @@ static u32 optimize_vcore_voltage(struct volts const *v)
 #ifdef CONFIG_IODELAY_RECALIBRATION
 void __weak recalibrate_iodelay(void)
 {
+	debug("WEAK recalibrate_iodelay() called\n");
 }
 #endif
 
@@ -530,10 +531,14 @@ void __weak recalibrate_iodelay(void)
  */
 void scale_vcores(struct vcores_data const *vcores)
 {
+	printf("scale_vcores !!\n");
 #if defined(CONFIG_DRA7XX)
 	int i;
 	struct volts *pv = (struct volts *)vcores;
 	struct volts *px;
+
+	printf("scale_vcores (CONFIG_DRA7XX) !!\n");
+
 
 	for (i=0; i<(sizeof(struct vcores_data)/sizeof(struct volts)); i++) {
 		debug("%d -> ", pv->value);
