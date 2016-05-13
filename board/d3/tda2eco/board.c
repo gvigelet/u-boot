@@ -39,7 +39,7 @@
 #define BOARD_ID_MASK	0x07
 
 enum board_id {
-	BOARD_TDA2ECO_TDA2 = 0x04,
+	BOARD_TDA2ECO_TDA2 = 0x00,
 };
 
 DECLARE_GLOBAL_DATA_PTR;
@@ -239,6 +239,38 @@ int board_late_init(void)
 	return 0;
 }
 
+#ifdef CONFIG_IODELAY_RECALIBRATION
+void recalibrate_iodelay(void)
+{
+	const struct pad_conf_entry *pconf;
+	const struct iodelay_cfg_entry *iod;
+	int pconf_sz, iod_sz;
+	int ret;
+		
+	/* D3 TDA2Eco */
+
+	pconf = core_padconf_array_essential_d3_tda2eco;
+	pconf_sz = ARRAY_SIZE(core_padconf_array_essential_d3_tda2eco);
+		
+	iod = iodelay_cfg_array_d3_tda2eco;
+	iod_sz = ARRAY_SIZE(iodelay_cfg_array_d3_tda2eco);
+		
+	/* Setup I/O isolation */
+	ret = __recalibrate_iodelay_start();
+	if (ret)
+		goto err;
+
+	/* Do the muxing here */
+	do_set_mux32((*ctrl)->control_padconf_core_base, pconf, pconf_sz); 
+
+	/* Setup IOdelay configuration */
+	ret = do_set_iodelay((*ctrl)->iodelay_config_base, iod, iod_sz);
+err:
+	/* Closeup.. remove isolation */
+	__recalibrate_iodelay_end(ret);
+}
+#endif
+
 void set_muxconf_regs_essential(void)
 {
 	do_set_mux32((*ctrl)->control_padconf_core_base,
@@ -311,6 +343,46 @@ static struct ti_usb_phy_device usb_phy2_device = {
 	.index = 1,
 };
 
+int board_usb_init(int index, enum usb_init_type init)
+{
+	enable_usb_clocks(index);
+	switch (index) {
+	case 0:
+		if (init == USB_INIT_DEVICE) {
+			printf("port %d can't be used as device\n", index);
+			return -EINVAL;
+		} else {
+			usb_otg_ss1.dr_mode = USB_DR_MODE_HOST;
+			usb_otg_ss1_glue.vbus_id_status = OMAP_DWC3_ID_GROUND;
+			setbits_le32((*prcm)->cm_l3init_usb_otg_ss1_clkctrl,
+				     OTG_SS_CLKCTRL_MODULEMODE_HW |
+				     OPTFCLKEN_REFCLK960M);
+		}
+
+		ti_usb_phy_uboot_init(&usb_phy1_device);
+		dwc3_omap_uboot_init(&usb_otg_ss1_glue);
+		dwc3_uboot_init(&usb_otg_ss1);
+		break;
+	case 1:
+		if (init == USB_INIT_DEVICE) {
+			usb_otg_ss2.dr_mode = USB_DR_MODE_PERIPHERAL;
+			usb_otg_ss2_glue.vbus_id_status = OMAP_DWC3_VBUS_VALID;
+		} else {
+			printf("port %d can't be used as host\n", index);
+			return -EINVAL;
+		}
+
+		ti_usb_phy_uboot_init(&usb_phy2_device);
+		dwc3_omap_uboot_init(&usb_otg_ss2_glue);
+		dwc3_uboot_init(&usb_otg_ss2);
+		break;
+	default:
+		printf("Invalid Controller Index\n");
+	}
+
+	return 0;
+}
+
 int board_usb_cleanup(int index, enum usb_init_type init)
 {
 	switch (index) {
@@ -362,9 +434,8 @@ static struct cpsw_slave_data cpsw_slaves[] = {
 	{
 		.slave_reg_ofs	= 0x208,
 		.sliver_reg_ofs	= 0xd80,
-		.phy_addr	= 0,
-	},
-	{
+		.phy_addr	= 0,				// originally set to 0
+	},{
 		.slave_reg_ofs	= 0x308,
 		.sliver_reg_ofs	= 0xdc0,
 		.phy_addr	= 1,
@@ -389,6 +460,48 @@ static struct cpsw_platform_data cpsw_data = {
 	.host_port_num		= 0,
 	.version		= CPSW_CTRL_VERSION_2,
 };
+
+static u64 mac_to_u64(u8 mac[6])
+{
+	int i;
+	u64 addr = 0;
+
+	for (i = 0; i < 6; i++) {
+		addr <<= 8;
+		addr |= mac[i];
+	}
+
+	return addr;
+}
+
+static void u64_to_mac(u64 addr, u8 mac[6])
+{
+	mac[5] = addr;
+	mac[4] = addr >> 8;
+	mac[3] = addr >> 16;
+	mac[2] = addr >> 24;
+	mac[1] = addr >> 32;
+	mac[0] = addr >> 40;
+}
+
+static void __maybe_unused board_ti_get_eth_mac_addr(int index,
+					      u8 mac_addr[TI_EEPROM_HDR_ETH_ALEN])
+{
+	struct ti_common_eeprom *ep = TI_EEPROM_DATA;
+
+	if (ep->header == TI_DEAD_EEPROM_MAGIC)
+		goto fail;
+
+	if (index < 0 || index >= TI_EEPROM_HDR_NO_OF_MAC_ADDR)
+		goto fail;
+
+	memcpy(mac_addr, ep->mac_addr[index], TI_EEPROM_HDR_ETH_ALEN);
+	return;
+
+fail:
+	memset(mac_addr, 0, TI_EEPROM_HDR_ETH_ALEN);
+}
+
 
 int board_eth_init(bd_t *bis)
 {
@@ -436,53 +549,33 @@ int board_eth_init(bd_t *bis)
 	if (ret < 0)
 		printf("Error %d registering CPSW switch\n", ret);
 
+
+	board_ti_get_eth_mac_addr(0, mac_addr1);
+	board_ti_get_eth_mac_addr(1, mac_addr2);
+	
+	if (is_valid_ethaddr(mac_addr1) && is_valid_ethaddr(mac_addr2)) {
+		mac1 = mac_to_u64(mac_addr1);
+		mac2 = mac_to_u64(mac_addr2);
+
+		/* must contain an address range */
+		num_macs = mac2 - mac1 + 1;
+		/* <= 50 to protect against user programming error */
+		if (num_macs > 0 && num_macs <= 50) {
+			for (i = 0; i < num_macs; i++) {
+				u64_to_mac(mac1 + i, mac_addr);
+				if (is_valid_ethaddr(mac_addr)) {
+					eth_setenv_enetaddr_by_index("eth",
+								     i + 2,
+								     mac_addr);
+				}
+			}
+		}
+	}
+	
 	return ret;
 }
 #endif
 
-#if defined(CONFIG_USB_XHCI_OMAP) || defined(CONFIG_USB_DWC3)
-int board_usb_init(int index, enum usb_init_type init)
-{
-	enable_usb_clocks(index);
-	switch (index) {
-	case 0:
-		if (init == USB_INIT_DEVICE) {
-			printf("port %d can't be used as device\n", index);
-			return -EINVAL;
-		} else {
-			usb_otg_ss1.dr_mode = USB_DR_MODE_HOST;
-			usb_otg_ss1_glue.vbus_id_status = OMAP_DWC3_ID_GROUND;
-			setbits_le32((*prcm)->cm_l3init_usb_otg_ss1_clkctrl,
-				     OTG_SS_CLKCTRL_MODULEMODE_HW |
-				     OPTFCLKEN_REFCLK960M);
-		}
-
-		ti_usb_phy_uboot_init(&usb_phy1_device);
-		dwc3_omap_uboot_init(&usb_otg_ss1_glue);
-		dwc3_uboot_init(&usb_otg_ss1);
-		break;
-	case 1:
-		if (init == USB_INIT_DEVICE) {
-			usb_otg_ss2.dr_mode = USB_DR_MODE_PERIPHERAL;
-			usb_otg_ss2_glue.vbus_id_status = OMAP_DWC3_VBUS_VALID;
-		} else {
-			printf("port %d can't be used as host\n", index);
-			return -EINVAL;
-		}
-
-		ti_usb_phy_uboot_init(&usb_phy2_device);
-		dwc3_omap_uboot_init(&usb_otg_ss2_glue);
-		dwc3_uboot_init(&usb_otg_ss2);
-		break;
-	default:
-		printf("Invalid Controller Index\n");
-	}
-
-	return 0;
-}
-#endif
-
-#ifdef CONFIG_BOARD_EARLY_INIT_F
 #ifdef CONFIG_TPM
 static inline void tpm_io_init(void)
 {
@@ -505,6 +598,7 @@ static inline void tpm_io_init(void)
 }
 #endif
 
+#ifdef CONFIG_BOARD_EARLY_INIT_F
 int board_early_init_f(void)
 {
 #ifdef CONFIG_TPM
