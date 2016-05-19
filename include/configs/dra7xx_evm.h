@@ -15,6 +15,9 @@
 #define CONFIG_DRA7XX
 #define CONFIG_BOARD_EARLY_INIT_F
 
+/* Linux interfacing, DTB/FDT fixups */
+#define CONFIG_OF_BOARD_SETUP
+
 #ifdef CONFIG_SPL_BUILD
 #define CONFIG_IODELAY_RECALIBRATION
 #endif
@@ -90,8 +93,8 @@
 #define CONFIG_CMD_SF
 #define CONFIG_CMD_SPI
 #define CONFIG_TI_SPI_MMAP
-#define CONFIG_SF_DEFAULT_SPEED                48000000
-#define CONFIG_DEFAULT_SPI_MODE                SPI_MODE_3
+#define CONFIG_SF_DEFAULT_SPEED                64000000
+#define CONFIG_SF_DEFAULT_MODE                 SPI_MODE_0
 #define CONFIG_QSPI_QUAD_SUPPORT
 #define CONFIG_DFU_SF
 
@@ -250,5 +253,9 @@
 /* pcf support */
 #define CONFIG_PCF8575
 #define CONFIG_SYS_I2C_PCF8575_CHIP { {0x21, 0xeaf7} }
+
+/* EEPROM */
+#define CONFIG_EEPROM_CHIP_ADDRESS 0x50
+#define CONFIG_EEPROM_BUS_ADDRESS 0
 
 #endif /* __CONFIG_DRA7XX_EVM_H */

@@ -16,6 +16,7 @@
 #include <asm/arch/omap.h>
 #include <asm/arch/ddr_defs.h>
 #include <asm/arch/clock.h>
+#include <asm/arch/clk_synthesizer.h>
 #include <asm/arch/gpio.h>
 #include <asm/arch/mmc_host_def.h>
 #include <asm/arch/sys_proto.h>
@@ -37,16 +38,22 @@
 DECLARE_GLOBAL_DATA_PTR;
 
 /* GPIO that controls power to DDR on EVM-SK */
-#define GPIO_DDR_VTT_EN		7
+#define GPIO_TO_PIN(bank, gpio)		(32 * (bank) + (gpio))
+#define GPIO_DDR_VTT_EN		GPIO_TO_PIN(0, 7)
+#define ICE_GPIO_DDR_VTT_EN	GPIO_TO_PIN(0, 18)
+#define GPIO_PR1_MII_CTRL	GPIO_TO_PIN(3, 4)
+#define GPIO_MUX_MII_CTRL	GPIO_TO_PIN(3, 10)
+#define GPIO_FET_SWITCH_CTRL	GPIO_TO_PIN(0, 7)
+#define GPIO_PHY_RESET		GPIO_TO_PIN(2, 5)
 
 static struct ctrl_dev *cdev = (struct ctrl_dev *)CTRL_DEVICE_BASE;
 
 /*
  * Read header information from EEPROM into global structure.
  */
-static int __maybe_unused read_eeprom(struct ti_am_eeprom **header)
+static int __maybe_unused read_eeprom(void)
 {
-	return ti_i2c_eeprom_am_get(-1, CONFIG_SYS_I2C_EEPROM_ADDR, header);
+	return ti_i2c_eeprom_am_get(-1, CONFIG_SYS_I2C_EEPROM_ADDR);
 }
 
 #ifndef CONFIG_SKIP_LOWLEVEL_INIT
@@ -94,6 +101,13 @@ static const struct ddr_data ddr3_evm_data = {
 	.datawrsratio0 = MT41J512M8RH125_PHY_WR_DATA,
 };
 
+static const struct ddr_data ddr3_icev2_data = {
+	.datardsratio0 = MT41J128MJT125_RD_DQS_400MHz,
+	.datawdsratio0 = MT41J128MJT125_WR_DQS_400MHz,
+	.datafwsratio0 = MT41J128MJT125_PHY_FIFO_WE_400MHz,
+	.datawrsratio0 = MT41J128MJT125_PHY_WR_DATA_400MHz,
+};
+
 static const struct cmd_control ddr3_cmd_ctrl_data = {
 	.cmd0csratio = MT41J128MJT125_RATIO,
 	.cmd0iclkout = MT41J128MJT125_INVERT_CLKOUT,
@@ -125,6 +139,17 @@ static const struct cmd_control ddr3_evm_cmd_ctrl_data = {
 
 	.cmd2csratio = MT41J512M8RH125_RATIO,
 	.cmd2iclkout = MT41J512M8RH125_INVERT_CLKOUT,
+};
+
+static const struct cmd_control ddr3_icev2_cmd_ctrl_data = {
+	.cmd0csratio = MT41J128MJT125_RATIO_400MHz,
+	.cmd0iclkout = MT41J128MJT125_INVERT_CLKOUT_400MHz,
+
+	.cmd1csratio = MT41J128MJT125_RATIO_400MHz,
+	.cmd1iclkout = MT41J128MJT125_INVERT_CLKOUT_400MHz,
+
+	.cmd2csratio = MT41J128MJT125_RATIO_400MHz,
+	.cmd2iclkout = MT41J128MJT125_INVERT_CLKOUT_400MHz,
 };
 
 static struct emif_regs ddr3_emif_reg_data = {
@@ -159,6 +184,17 @@ static struct emif_regs ddr3_evm_emif_reg_data = {
 				PHY_EN_DYN_PWRDN,
 };
 
+static struct emif_regs ddr3_icev2_emif_reg_data = {
+	.sdram_config = MT41J128MJT125_EMIF_SDCFG_400MHz,
+	.ref_ctrl = MT41J128MJT125_EMIF_SDREF_400MHz,
+	.sdram_tim1 = MT41J128MJT125_EMIF_TIM1_400MHz,
+	.sdram_tim2 = MT41J128MJT125_EMIF_TIM2_400MHz,
+	.sdram_tim3 = MT41J128MJT125_EMIF_TIM3_400MHz,
+	.zq_config = MT41J128MJT125_ZQ_CFG_400MHz,
+	.emif_ddr_phy_ctlr_1 = MT41J128MJT125_EMIF_READ_LATENCY_400MHz |
+				PHY_EN_DYN_PWRDN,
+};
+
 #ifdef CONFIG_SPL_OS_BOOT
 int spl_start_uboot(void)
 {
@@ -187,10 +223,9 @@ const struct dpll_params dpll_ddr_bone_black = {
 
 void am33xx_spl_board_init(void)
 {
-	struct ti_am_eeprom *header;
 	int mpu_vdd;
 
-	if (read_eeprom(&header) < 0)
+	if (read_eeprom() < 0)
 		puts("Could not get board ID.\n");
 
 	/* Get the frequency */
@@ -204,8 +239,7 @@ void am33xx_spl_board_init(void)
 		 * Only perform PMIC configurations if board rev > A1
 		 * on Beaglebone White
 		 */
-		if (board_is_bone() && !strncmp(header->version,
-						       "00A1", 4))
+		if (board_is_bone() && !strncmp(board_ti_get_rev(), "00A1", 4))
 			return;
 
 		if (i2c_probe(TPS65217_CHIP_PM))
@@ -331,18 +365,16 @@ void am33xx_spl_board_init(void)
 
 const struct dpll_params *get_dpll_ddr_params(void)
 {
-	struct ti_am_eeprom *header;
-
 	enable_i2c0_pin_mux();
 	i2c_init(CONFIG_SYS_OMAP24_I2C_SPEED, CONFIG_SYS_OMAP24_I2C_SLAVE);
-	if (read_eeprom(&header) < 0)
+	if (read_eeprom() < 0)
 		puts("Could not get board ID.\n");
 
 	if (board_is_evm_sk())
 		return &dpll_ddr_evm_sk;
-	else if (board_is_bone_lt())
+	else if (board_is_bone_lt() || board_is_icev2())
 		return &dpll_ddr_bone_black;
-	else if (board_is_evm_15_or_later(header))
+	else if (board_is_evm_15_or_later())
 		return &dpll_ddr_evm_sk;
 	else
 		return &dpll_ddr;
@@ -367,12 +399,10 @@ void set_uart_mux_conf(void)
 
 void set_mux_conf_regs(void)
 {
-	__maybe_unused struct ti_am_eeprom *header;
-
-	if (read_eeprom(&header) < 0)
+	if (read_eeprom() < 0)
 		puts("Could not get board ID.\n");
 
-	enable_board_pin_mux(header);
+	enable_board_pin_mux();
 }
 
 const struct ctrl_ioregs ioregs_evmsk = {
@@ -409,9 +439,7 @@ const struct ctrl_ioregs ioregs = {
 
 void sdram_init(void)
 {
-	__maybe_unused struct ti_am_eeprom *header;
-
-	if (read_eeprom(&header) < 0)
+	if (read_eeprom() < 0)
 		puts("Could not get board ID.\n");
 
 	if (board_is_evm_sk()) {
@@ -423,6 +451,11 @@ void sdram_init(void)
 		gpio_direction_output(GPIO_DDR_VTT_EN, 1);
 	}
 
+	if (board_is_icev2()) {
+		gpio_request(ICE_GPIO_DDR_VTT_EN, "ddr_vtt_en");
+		gpio_direction_output(ICE_GPIO_DDR_VTT_EN, 1);
+	}
+
 	if (board_is_evm_sk())
 		config_ddr(303, &ioregs_evmsk, &ddr3_data,
 			   &ddr3_cmd_ctrl_data, &ddr3_emif_reg_data, 0);
@@ -431,9 +464,13 @@ void sdram_init(void)
 			   &ddr3_beagleblack_data,
 			   &ddr3_beagleblack_cmd_ctrl_data,
 			   &ddr3_beagleblack_emif_reg_data, 0);
-	else if (board_is_evm_15_or_later(header))
+	else if (board_is_evm_15_or_later())
 		config_ddr(303, &ioregs_evm15, &ddr3_evm_data,
 			   &ddr3_evm_cmd_ctrl_data, &ddr3_evm_emif_reg_data, 0);
+	else if (board_is_icev2())
+		config_ddr(400, &ioregs_evmsk, &ddr3_icev2_data,
+			   &ddr3_icev2_cmd_ctrl_data, &ddr3_icev2_emif_reg_data,
+			   0);
 	else
 		config_ddr(266, &ioregs, &ddr2_data,
 			   &ddr2_cmd_ctrl_data, &ddr2_emif_reg_data, 0);
@@ -460,14 +497,7 @@ int board_init(void)
 int board_late_init(void)
 {
 #ifdef CONFIG_ENV_VARS_UBOOT_RUNTIME_CONFIG
-	struct ti_am_eeprom_printable p;
-	int rc;
-
-	rc = ti_i2c_eeprom_am_get_print(-1, CONFIG_SYS_I2C_EEPROM_ADDR, &p);
-
-	if (rc)
-		puts("Could not get board ID.\n");
-	set_board_info_env(p.name, p.version, p.serial);
+	set_board_info_env(NULL);
 #endif
 
 	return 0;
@@ -514,7 +544,53 @@ static struct cpsw_platform_data cpsw_data = {
 	.host_port_num		= 0,
 	.version		= CPSW_CTRL_VERSION_2,
 };
+
+static void request_and_set_gpio(int gpio, char *name)
+{
+	int ret;
+
+	ret = gpio_request(gpio, name);
+	if (ret < 0) {
+		printf("%s: Unable to request %s\n", __func__, name);
+		return;
+	}
+
+	ret = gpio_direction_output(gpio, 0);
+	if (ret < 0) {
+		printf("%s: Unable to set %s  as output\n", __func__, name);
+		goto err_free_gpio;
+	}
+
+	gpio_set_value(gpio, 1);
+
+	return;
+
+err_free_gpio:
+	gpio_free(gpio);
+}
+
+#define REQUEST_AND_SET_GPIO(N)	request_and_set_gpio(N, #N);
+
+/**
+ * RMII mode on ICEv2 board needs 50MHz clock. Given the clock
+ * synthesizer With a capacitor of 18pF, and 25MHz input clock cycle
+ * PLL1 gives an output of 100MHz. So, configuring the div2/3 as 2 to
+ * give 50MHz output for Eth0 and 1.
+ */
+static struct clk_synth cdce913_data = {
+	.id = 0x81,
+	.capacitor = 0x90,
+	.mux = 0x6d,
+	.pdiv2 = 0x2,
+	.pdiv3 = 0x2,
+};
 #endif
+
+#if ((defined(CONFIG_SPL_ETH_SUPPORT) || defined(CONFIG_SPL_USBETH_SUPPORT)) &&\
+	defined(CONFIG_SPL_BUILD)) || \
+	((defined(CONFIG_DRIVER_TI_CPSW) || \
+	  defined(CONFIG_USB_ETHER) && defined(CONFIG_MUSB_GADGET)) && \
+	 !defined(CONFIG_SPL_BUILD))
 
 /*
  * This function will:
@@ -527,17 +603,11 @@ static struct cpsw_platform_data cpsw_data = {
  * Build in only these cases to avoid warnings about unused variables
  * when we build an SPL that has neither option but full U-Boot will.
  */
-#if ((defined(CONFIG_SPL_ETH_SUPPORT) || defined(CONFIG_SPL_USBETH_SUPPORT)) \
-		&& defined(CONFIG_SPL_BUILD)) || \
-	((defined(CONFIG_DRIVER_TI_CPSW) || \
-	  defined(CONFIG_USB_ETHER) && defined(CONFIG_MUSB_GADGET)) && \
-	 !defined(CONFIG_SPL_BUILD))
 int board_eth_init(bd_t *bis)
 {
 	int rv, n = 0;
 	uint8_t mac_addr[6];
 	uint32_t mac_hi, mac_lo;
-	__maybe_unused struct ti_am_eeprom *header;
 
 	/* try reading mac address from efuse */
 	mac_lo = readl(&cdev->macid0l);
@@ -574,14 +644,32 @@ int board_eth_init(bd_t *bis)
 			eth_setenv_enetaddr("eth1addr", mac_addr);
 	}
 
-	if (read_eeprom(&header) < 0)
+	if (board_is_icev2()) {
+		REQUEST_AND_SET_GPIO(GPIO_PR1_MII_CTRL);
+		REQUEST_AND_SET_GPIO(GPIO_MUX_MII_CTRL);
+		REQUEST_AND_SET_GPIO(GPIO_FET_SWITCH_CTRL);
+		REQUEST_AND_SET_GPIO(GPIO_PHY_RESET);
+
+		rv = setup_clock_synthesizer(&cdce913_data);
+		if (rv) {
+			printf("Clock synthesizer setup failed %d\n", rv);
+			return rv;
+		}
+	}
+
+	if (read_eeprom() < 0)
 		puts("Could not get board ID.\n");
 
-	if (board_is_bone() || board_is_bone_lt() ||
-	    board_is_idk(header)) {
+	if (board_is_bone() || board_is_bone_lt() || board_is_idk()) {
 		writel(MII_MODE_ENABLE, &cdev->miisel);
 		cpsw_slaves[0].phy_if = cpsw_slaves[1].phy_if =
 				PHY_INTERFACE_MODE_MII;
+	} else if (board_is_icev2()) {
+		writel(RMII_MODE_ENABLE | RMII_CHIPCKL_ENABLE, &cdev->miisel);
+		cpsw_slaves[0].phy_if = PHY_INTERFACE_MODE_RMII;
+		cpsw_slaves[1].phy_if = PHY_INTERFACE_MODE_RMII;
+		cpsw_slaves[0].phy_addr = 1;
+		cpsw_slaves[1].phy_addr = 3;
 	} else {
 		writel((RGMII_MODE_ENABLE | RGMII_INT_DELAY), &cdev->miisel);
 		cpsw_slaves[0].phy_if = cpsw_slaves[1].phy_if =

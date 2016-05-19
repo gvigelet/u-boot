@@ -18,6 +18,7 @@
 #define CONFIG_EXTRA_ENV_KS2_BOARD_SETTINGS				\
 	DEFAULT_MMC_TI_ARGS						\
 	DEFAULT_PMMC_BOOT_ENV						\
+  "boot=mmc\0"              \
 	"console=ttyS0,115200n8\0"					\
 	"bootpart=0:2\0"						\
 	"bootdir=/boot\0"						\
@@ -25,7 +26,7 @@
 	"addr_mon=0x0c040000\0"						\
 	"args_ubi=setenv bootargs ${bootargs} rootfstype=ubifs "	\
 	"root=ubi0:rootfs rootflags=sync rw ubi.mtd=ubifs,2048\0"	\
-	"name_fdt=k2g-evm.dtb\0"				\
+	"name_fdt=keystone-k2g-evm.dtb\0"				\
 	"name_mon=skern-k2g.bin\0"					\
 	"name_ubi=k2g-evm-ubifs.ubi\0"					\
 	"name_uboot=u-boot-spi-k2g-evm.gph\0"				\
@@ -51,6 +52,7 @@
 #define CONFIG_KSNET_NETCP_V1_5
 #define CONFIG_KSNET_CPSW_NUM_PORTS	2
 #define CONFIG_PHY_MICREL
+#define PHY_ANEG_TIMEOUT	10000 /* PHY needs longer aneg time */
 
 /* MMC/SD */
 #define CONFIG_MMC

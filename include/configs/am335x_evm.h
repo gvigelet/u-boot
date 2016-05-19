@@ -116,10 +116,10 @@
 	"mmcboot=mmc dev ${mmcdev}; " \
 		"if mmc rescan; then " \
 			"echo SD/MMC found on device ${mmcdev};" \
-				"if run loadimage; then " \
-					"run mmcloados;" \
-				"fi;" \
-			"fi ;" \
+			"run envboot; " \
+			"if run loadimage; then " \
+				"run mmcloados;" \
+			"fi;" \
 		"fi;\0" \
 	"spiboot=echo Booting from spi ...; " \
 		"run spiargs; " \
@@ -138,8 +138,16 @@
 			"setenv fdtfile am335x-evm.dtb; fi; " \
 		"if test $board_name = A335X_SK; then " \
 			"setenv fdtfile am335x-evmsk.dtb; fi; " \
+		"if test $board_name = A335_ICE; then " \
+			"setenv fdtfile am335x-icev2.dtb; fi; " \
 		"if test $fdtfile = undefined; then " \
 			"echo WARNING: Could not determine device tree to use; fi; \0" \
+	"init_console=" \
+		"if test $board_name = A335_ICE; then "\
+			"setenv console ttyO3,115200n8;" \
+		"else " \
+			"setenv console ttyO0,115200n8;" \
+		"fi;\0" \
 	NANDARGS \
 	NETARGS \
 	DFUARGS
@@ -147,7 +155,7 @@
 
 #define CONFIG_BOOTCOMMAND \
 	"run findfdt; " \
-	"run envboot; " \
+	"run init_console; " \
 	"run mmcboot;" \
 	"setenv mmcdev 1; " \
 	"setenv bootpart 1:2; " \
@@ -455,5 +463,10 @@
 #define CONFIG_SYS_FLASH_SIZE		0x01000000
 #define CONFIG_SYS_MONITOR_BASE		CONFIG_SYS_FLASH_BASE
 #endif  /* NOR support */
+
+#ifdef CONFIG_DRIVER_TI_CPSW
+#define CONFIG_CLOCK_SYNTHESIZER
+#define CLK_SYNTHESIZER_I2C_ADDR 0x65
+#endif
 
 #endif	/* ! __CONFIG_AM335X_EVM_H */

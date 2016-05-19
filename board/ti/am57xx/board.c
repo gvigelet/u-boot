@@ -33,10 +33,10 @@
 #include "mux_data.h"
 #include <board-common/board_detect.h>
 
-#define board_is_x15()		board_am_is("BBRDX15_")
-#define board_is_am572x_evm()	board_am_is("AM572PM_")
-#define board_is_am572x_idk()	board_am_is("AM572IDK")
-#define board_is_am571x_idk()	board_am_is("AM571IDK")
+#define board_is_x15()		board_ti_is("BBRDX15_")
+#define board_is_am572x_evm()	board_ti_is("AM572PM_")
+#define board_is_am572x_idk()	board_ti_is("AM572IDK")
+#define board_is_am571x_idk()	board_ti_is("AM571IDK")
 
 #ifdef CONFIG_DRIVER_TI_CPSW
 #include <cpsw.h>
@@ -47,8 +47,10 @@ DECLARE_GLOBAL_DATA_PTR;
 /* GPIO 7_11 */
 #define GPIO_DDR_VTT_EN 203
 
+#define SYSINFO_BOARD_NAME_MAX_LEN	45
+
 const struct omap_sysinfo sysinfo = {
-	"Board: UNKNOWN(BeagleBoard X15?)\n"
+	"Board: UNKNOWN(BeagleBoard X15?) REV UNKNOWN\n"
 };
 
 static const struct dmm_lisa_map_regs beagle_x15_lisa_regs = {
@@ -78,7 +80,7 @@ static const struct emif_regs beagle_x15_emif1_ddr3_532mhz_emif_regs = {
 	.sdram_tim1		= 0xcccf36ab,
 	.sdram_tim2		= 0x308f7fda,
 	.sdram_tim3		= 0x409f88a8,
-	.read_idle_ctrl		= 0x00090000,
+	.read_idle_ctrl		= 0x00050000,
 	.zq_config		= 0x5007190b,
 	.temp_alert_config	= 0x00000000,
 	.emif_ddr_phy_ctlr_1_init = 0x0024400b,
@@ -142,7 +144,7 @@ static const struct emif_regs beagle_x15_emif2_ddr3_532mhz_emif_regs = {
 	.sdram_tim1		= 0xcccf36ab,
 	.sdram_tim2		= 0x308f7fda,
 	.sdram_tim3		= 0x409f88a8,
-	.read_idle_ctrl		= 0x00090000,
+	.read_idle_ctrl		= 0x00050000,
 	.zq_config		= 0x5007190b,
 	.temp_alert_config	= 0x00000000,
 	.emif_ddr_phy_ctlr_1_init = 0x0024400b,
@@ -261,11 +263,10 @@ static inline void setup_board_eeprom_env(void) { }
 /* Override function to read eeprom information */
 void do_board_detect(void)
 {
-	struct ti_am_eeprom *ep;
 	int rc;
 
 	rc = ti_i2c_eeprom_am_get(CONFIG_EEPROM_BUS_ADDRESS,
-				  CONFIG_EEPROM_CHIP_ADDRESS, &ep);
+				  CONFIG_EEPROM_CHIP_ADDRESS);
 	if (rc)
 		printf("ti_i2c_eeprom_init failed %d\n", rc);
 }
@@ -274,12 +275,11 @@ void do_board_detect(void)
 
 void do_board_detect(void)
 {
-	struct ti_am_eeprom *ep;
 	char *bname = NULL;
 	int rc;
 
 	rc = ti_i2c_eeprom_am_get(CONFIG_EEPROM_BUS_ADDRESS,
-				  CONFIG_EEPROM_CHIP_ADDRESS, &ep);
+				  CONFIG_EEPROM_CHIP_ADDRESS);
 	if (rc)
 		printf("ti_i2c_eeprom_init failed %d\n", rc);
 
@@ -293,38 +293,34 @@ void do_board_detect(void)
 		bname = "AM571x IDK";
 
 	if (bname)
-		snprintf(sysinfo.board_string, sizeof(sysinfo.board_string),
-			 "Board: %s\n", bname);
+		snprintf(sysinfo.board_string, SYSINFO_BOARD_NAME_MAX_LEN,
+			 "Board: %s REV %s\n", bname, board_ti_get_rev());
 }
 
 static void setup_board_eeprom_env(void)
 {
 	char *name = "beagle_x15";
-	int rc;
-	struct ti_am_eeprom_printable p;
 
-	rc = ti_i2c_eeprom_am_get_print(CONFIG_EEPROM_BUS_ADDRESS,
-					CONFIG_EEPROM_CHIP_ADDRESS, &p);
-	if (rc) {
-		printf("Invalid EEPROM data(@0x%p). Default to X15\n",
-		       TI_AM_EEPROM_DATA);
-		goto invalid_eeprom;
+	if (board_is_x15()) {
+		if (omap_revision() == DRA752_ES1_1)
+			name = "beagle_x15";
+		else
+			name = "beagle_x15_es2plus";
+	} else if (board_is_am572x_evm()) {
+		if (omap_revision() == DRA752_ES1_1)
+			name = "am57xx_evm";
+		else
+			name = "am57xx_evm_es2plus";
+	} else if (board_is_am572x_idk()) {
+		name = "am572x_idk";
+	} else if (board_is_am571x_idk()) {
+		name = "am571x_idk";
+	} else {
+		printf("Unidentified board claims %s in eeprom header\n",
+		       board_ti_get_name());
 	}
 
-	if (board_is_x15())
-		name = "beagle_x15";
-	else if (board_is_am572x_evm())
-		name = "am57xx_evm";
-	else if (board_is_am572x_idk())
-		name = "am572x_idk";
-	else if (board_is_am571x_idk())
-		name = "am571x_idk";
-	else
-		printf("Unidentified board claims %s in eeprom header\n",
-		       p.name);
-
-invalid_eeprom:
-	set_board_info_env(name, p.version, p.serial);
+	set_board_info_env(name);
 }
 
 /* Eeprom is alread read by SPL.. nothing more to do here.. */
@@ -372,6 +368,7 @@ void recalibrate_iodelay(void)
 	const struct pad_conf_entry *pconf;
 	const struct iodelay_cfg_entry *iod;
 	int pconf_sz, iod_sz;
+	int ret;
 
 	if (board_is_am572x_idk()) {
 		pconf = core_padconf_array_essential_am572x_idk;
@@ -387,11 +384,42 @@ void recalibrate_iodelay(void)
 		/* Common for X15/GPEVM */
 		pconf = core_padconf_array_essential_x15;
 		pconf_sz = ARRAY_SIZE(core_padconf_array_essential_x15);
-		iod = iodelay_cfg_array_x15;
-		iod_sz = ARRAY_SIZE(iodelay_cfg_array_x15);
+		/* There never was an SR1.0 X15.. So.. */
+		if (omap_revision() == DRA752_ES1_1) {
+			iod = iodelay_cfg_array_x15_sr1_1;
+			iod_sz = ARRAY_SIZE(iodelay_cfg_array_x15_sr1_1);
+		} else {
+			/* Since full production should switch to SR2.0  */
+			iod = iodelay_cfg_array_x15_sr2_0;
+			iod_sz = ARRAY_SIZE(iodelay_cfg_array_x15_sr2_0);
+		}
 	}
 
-	__recalibrate_iodelay(pconf, pconf_sz, iod, iod_sz);
+	/* Setup I/O isolation */
+	ret = __recalibrate_iodelay_start();
+	if (ret)
+		goto err;
+
+	/* Do the muxing here */
+	do_set_mux32((*ctrl)->control_padconf_core_base, pconf, pconf_sz);
+
+	/* Now do the weird minor deltas that should be safe */
+	if (board_is_x15() || board_is_am572x_evm()) {
+		if (omap_revision() == DRA752_ES1_1) {
+			pconf = core_padconf_array_delta_x15_sr1_1;
+			pconf_sz = ARRAY_SIZE(core_padconf_array_delta_x15_sr1_1);
+		} else {
+			pconf = core_padconf_array_delta_x15_sr2_0;
+			pconf_sz = ARRAY_SIZE(core_padconf_array_delta_x15_sr2_0);
+		}
+		do_set_mux32((*ctrl)->control_padconf_core_base, pconf, pconf_sz);
+	}
+
+	/* Setup IOdelay configuration */
+	ret = do_set_iodelay((*ctrl)->iodelay_config_base, iod, iod_sz);
+err:
+	/* Closeup.. remove isolation */
+	__recalibrate_iodelay_end(ret);
 }
 #endif
 
@@ -582,12 +610,39 @@ static struct cpsw_platform_data cpsw_data = {
 	.version		= CPSW_CTRL_VERSION_2,
 };
 
+static u64 mac_to_u64(u8 mac[6])
+{
+	int i;
+	u64 addr = 0;
+
+	for (i = 0; i < 6; i++) {
+		addr <<= 8;
+		addr |= mac[i];
+	}
+
+	return addr;
+}
+
+static void u64_to_mac(u64 addr, u8 mac[6])
+{
+	mac[5] = addr;
+	mac[4] = addr >> 8;
+	mac[3] = addr >> 16;
+	mac[2] = addr >> 24;
+	mac[1] = addr >> 32;
+	mac[0] = addr >> 40;
+}
+
 int board_eth_init(bd_t *bis)
 {
 	int ret;
 	uint8_t mac_addr[6];
 	uint32_t mac_hi, mac_lo;
 	uint32_t ctrl_val;
+	int i;
+	u64 mac1, mac2;
+	u8 mac_addr1[6], mac_addr2[6];
+	int num_macs;
 
 	/* try reading mac address from efuse */
 	mac_lo = readl((*ctrl)->control_core_mac_id_0_lo);
@@ -634,6 +689,32 @@ int board_eth_init(bd_t *bis)
 	if (ret < 0)
 		printf("Error %d registering CPSW switch\n", ret);
 
+	/*
+	 * Export any Ethernet MAC addresses from EEPROM.
+	 * On AM57xx the 2 MAC addresses define the address range
+	 */
+	board_ti_get_eth_mac_addr(0, mac_addr1);
+	board_ti_get_eth_mac_addr(1, mac_addr2);
+
+	if (is_valid_ethaddr(mac_addr1) && is_valid_ethaddr(mac_addr2)) {
+		mac1 = mac_to_u64(mac_addr1);
+		mac2 = mac_to_u64(mac_addr2);
+
+		/* must contain an address range */
+		num_macs = mac2 - mac1 + 1;
+		/* <= 50 to protect against user programming error */
+		if (num_macs > 0 && num_macs <= 50) {
+			for (i = 0; i < num_macs; i++) {
+				u64_to_mac(mac1 + i, mac_addr);
+				if (is_valid_ethaddr(mac_addr)) {
+					eth_setenv_enetaddr_by_index("eth",
+								     i + 2,
+								     mac_addr);
+				}
+			}
+		}
+	}
+
 	return ret;
 }
 #endif
@@ -652,6 +733,15 @@ static inline void vtt_regulator_enable(void)
 int board_early_init_f(void)
 {
 	vtt_regulator_enable();
+	return 0;
+}
+#endif
+
+#if defined(CONFIG_OF_LIBFDT) && defined(CONFIG_OF_BOARD_SETUP)
+int ft_board_setup(void *blob, bd_t *bd)
+{
+	ft_cpu_setup(blob, bd);
+
 	return 0;
 }
 #endif
