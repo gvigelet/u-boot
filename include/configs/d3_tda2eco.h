@@ -14,12 +14,11 @@
 
 #define CONFIG_DRA7XX
 #define CONFIG_TDA2ECO_BOARD
+#define CONFIG_BOARD_EARLY_INIT_F
 
 #ifdef CONFIG_SPL_BUILD
 #define CONFIG_IODELAY_RECALIBRATION
 #endif
-
-#define CONFIG_BOARD_EARLY_INIT_F
 
 #define CONFIG_NR_DRAM_BANKS		1
 
@@ -60,7 +59,6 @@
 #define CONFIG_DRIVER_TI_CPSW		/* Driver for IP block */
 
 #ifndef CONFIG_SPL_BUILD
-#if 0 /* Ethernet is not supported in u-boot */
 /* CPSW Ethernet */
 
 #define CONFIG_CMD_DHCP
@@ -77,7 +75,7 @@
 #define CONFIG_PHY_GIGE			/* per-board part of CPSW */
 #define CONFIG_PHYLIB
 #define PHY_ANEG_TIMEOUT	8000	/* PHY needs longer aneg time at 1G */
-#endif
+
 
 #endif /* !CONFIG_SPL_BUILD */
 
